@@ -1,22 +1,51 @@
 import 'dotenv/config';
-import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Command } from 'commander';
+import { format } from 'date-fns';
 
-const getOptions = (): { path: string } =>
+const getOptions = (): { target: string; output: string } =>
   new Command()
-    .requiredOption(`-p, --path [path]`, 'path from baseUrl')
+    .option(
+      '-t, --target [target]',
+      'target directory',
+      path.join(process.cwd(), 'src'),
+    )
+    .option(
+      '-o, --output [output]',
+      'output directory',
+      path.join(process.cwd(), 'outputs'),
+    )
     .parse(process.argv)
     .opts();
 
+const getFilenames = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((dirent) => {
+    const joined = path.join(dir, dirent.name);
+    return dirent.isFile() ? [joined] : getFilenames(joined);
+  });
+
 const main = async () => {
   try {
-    const options = getOptions();
-    const response = await axios.get(
-      `${process.env.BASE_URL}${options['path']}`,
-      {},
+    const { target, output } = getOptions();
+    const filenames = getFilenames(target);
+    const fileStats = filenames.map((filename) => ({
+      filename,
+      stat: fs.statSync(filename),
+    }));
+
+    if (!fs.existsSync(output)) {
+      fs.mkdirSync(output);
+    }
+
+    const outputFile = path.join(
+      output,
+      `${format(new Date(), 'yyyy-MM-dd_HH:mm:ss.SSS')}.json`,
     );
-    console.log('result', response.data);
-    console.log('done!');
+
+    fs.writeFileSync(outputFile, JSON.stringify(fileStats, null, '  '));
+
+    console.log('completed!!', outputFile);
     process.exit(0);
   } catch (error) {
     console.error(error);
